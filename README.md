@@ -156,19 +156,36 @@ Execute the complete test suite using:
 
 The integration tests use Spring Boot, MockMvc and the H2 database.
 
+
 ### Test Coverage
 
-The project includes 13 integration tests covering:
+The project includes 15 integration tests using JUnit 5,
+Spring Boot, MockMvc and an in-memory H2 database.
 
-- Five price selection scenarios required by the assessment.
-- Nonexistent product handling (HTTP 404).
+**Required scenarios:**
+- Base price on June 14th at 10:00.
+- Higher-priority price on June 14th at 16:00.
+- Base price after promotion on June 14th at 21:00.
+- Special price on June 15th at 10:00.
+- Higher-priority price on June 16th at 21:00.
+
+**Additional scenarios:**
+- Nonexistent product (HTTP 404).
 - Invalid application date format (HTTP 400).
-- Negative product identifier validation (HTTP 400).
-- Zero product identifier validation (HTTP 400).
-- Zero brand identifier validation (HTTP 400).
-- Missing application date validation (HTTP 400).
-- Inclusive price validity start boundary.
-- Inclusive price validity end boundary.
+- Negative product identifier (HTTP 400).
+- Zero product identifier (HTTP 400).
+- Zero brand identifier (HTTP 400).
+- Missing application date (HTTP 400).
+- Existing product without an applicable price (HTTP 404).
+- Nonexistent brand (HTTP 404).
+- Inclusive start date boundary.
+- Inclusive end date boundary.
+
+An additional context-loading test verifies that
+the Spring Boot application context starts successfully.
+
+Monetary values are verified using BigDecimal
+to preserve decimal precision.
 
 ## Error Handling
 

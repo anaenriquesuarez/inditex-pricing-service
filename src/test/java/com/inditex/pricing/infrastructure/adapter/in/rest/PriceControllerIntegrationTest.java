@@ -8,8 +8,10 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.math.BigDecimal;
+
+import static org.hamcrest.Matchers.comparesEqualTo;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
@@ -17,12 +19,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Tests the complete request flow, including the REST controller,
  * application service, persistence adapter and H2 database.
  * The first five tests cover the scenarios required by the
- * technical assessment. Additional tests validate error handling
- * and price validity boundaries.
+ * technical assessment. Additional tests validate error handling,
+ * parameter validation and price validity boundaries.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
 class PriceControllerIntegrationTest {
+
+    private static final String ENDPOINT = "/api/v1/prices";
+    private static final String PRODUCT_ID = "35455";
+    private static final String BRAND_ID = "1";
 
     @Autowired
     private MockMvc mockMvc;
@@ -42,24 +48,26 @@ class PriceControllerIntegrationTest {
     private void verifyPrice(
             String date,
             int expectedPriceList,
-            double expectedPrice,
+            BigDecimal expectedPrice,
             String expectedStartDate,
             String expectedEndDate
     ) throws Exception {
 
-        mockMvc.perform(get("/api/v1/prices")
+        mockMvc.perform(get(ENDPOINT)
                         .param("applicationDate", date)
-                        .param("productId", "35455")
-                        .param("brandId", "1")
+                        .param("productId", PRODUCT_ID)
+                        .param("brandId", BRAND_ID)
                         .accept(MediaType.APPLICATION_JSON))
-                .andDo(print())
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.productId").value(35455))
                 .andExpect(jsonPath("$.brandId").value(1))
                 .andExpect(jsonPath("$.priceList")
                         .value(expectedPriceList))
-                .andExpect(jsonPath("$.price")
-                        .value(expectedPrice))
+                .andExpect(jsonPath(
+                        "$.price",
+                        comparesEqualTo(expectedPrice),
+                        BigDecimal.class
+                ))
                 .andExpect(jsonPath("$.startDate")
                         .value(expectedStartDate))
                 .andExpect(jsonPath("$.endDate")
@@ -82,7 +90,7 @@ class PriceControllerIntegrationTest {
         verifyPrice(
                 "2020-06-14T10:00:00",
                 1,
-                35.50,
+                new BigDecimal("35.50"),
                 "2020-06-14T00:00:00",
                 "2020-12-31T23:59:59"
         );
@@ -100,7 +108,7 @@ class PriceControllerIntegrationTest {
         verifyPrice(
                 "2020-06-14T16:00:00",
                 2,
-                25.45,
+                new BigDecimal("25.45"),
                 "2020-06-14T15:00:00",
                 "2020-06-14T18:30:00"
         );
@@ -118,7 +126,7 @@ class PriceControllerIntegrationTest {
         verifyPrice(
                 "2020-06-14T21:00:00",
                 1,
-                35.50,
+                new BigDecimal("35.50"),
                 "2020-06-14T00:00:00",
                 "2020-12-31T23:59:59"
         );
@@ -136,7 +144,7 @@ class PriceControllerIntegrationTest {
         verifyPrice(
                 "2020-06-15T10:00:00",
                 3,
-                30.50,
+                new BigDecimal("30.50"),
                 "2020-06-15T00:00:00",
                 "2020-06-15T11:00:00"
         );
@@ -154,7 +162,7 @@ class PriceControllerIntegrationTest {
         verifyPrice(
                 "2020-06-16T21:00:00",
                 4,
-                38.95,
+                new BigDecimal("38.95"),
                 "2020-06-15T16:00:00",
                 "2020-12-31T23:59:59"
         );
@@ -165,128 +173,92 @@ class PriceControllerIntegrationTest {
     // ---------------------------------------------------------
 
     /**
-     * Verifies that requesting a product without an applicable
-     * price returns HTTP 404 and the expected error code.
+     * Verifies that requesting a nonexistent product returns
+     * HTTP 404 and the expected error code.
      */
     @Test
     void shouldReturn404WhenPriceDoesNotExist()
             throws Exception {
 
-        mockMvc.perform(get("/api/v1/prices")
+        mockMvc.perform(get(ENDPOINT)
                         .param("applicationDate",
                                 "2020-06-14T10:00:00")
                         .param("productId", "99999")
-                        .param("brandId", "1")
+                        .param("brandId", BRAND_ID)
                         .accept(MediaType.APPLICATION_JSON))
-                .andDo(print())
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error")
                         .value("PRICE_NOT_FOUND"));
     }
 
     /**
-     * Verifies that an invalid date format is rejected
-     * with HTTP 400 Bad Request.
+     * Verifies that an invalid application date format
+     * returns HTTP 400 Bad Request.
      */
     @Test
     void shouldReturn400WhenDateIsInvalid()
             throws Exception {
 
-        mockMvc.perform(get("/api/v1/prices")
+        mockMvc.perform(get(ENDPOINT)
                         .param("applicationDate", "invalid-date")
-                        .param("productId", "35455")
-                        .param("brandId", "1")
+                        .param("productId", PRODUCT_ID)
+                        .param("brandId", BRAND_ID)
                         .accept(MediaType.APPLICATION_JSON))
-                .andDo(print())
                 .andExpect(status().isBadRequest());
     }
 
     /**
-     * Verifies that product identifiers must be positive.
-     * A negative productId violates the validation constraint
-     * and must return HTTP 400 Bad Request.
+     * Verifies that negative product identifiers
+     * are rejected with HTTP 400 Bad Request.
      */
     @Test
     void shouldReturn400WhenProductIdIsNegative()
             throws Exception {
 
-        mockMvc.perform(get("/api/v1/prices")
+        mockMvc.perform(get(ENDPOINT)
                         .param("applicationDate",
                                 "2020-06-14T10:00:00")
                         .param("productId", "-1")
-                        .param("brandId", "1")
+                        .param("brandId", BRAND_ID)
                         .accept(MediaType.APPLICATION_JSON))
-                .andDo(print())
-                .andExpect(status().isBadRequest());
-    }
-
-    // ---------------------------------------------------------
-    // PRICE VALIDITY BOUNDARY TESTS
-    // ---------------------------------------------------------
-
-    /**
-     * Verifies that the start date of a price validity period
-     * is inclusive.
-     * At exactly 15:00, price list 2 must already apply.
-     */
-    @Test
-    void shouldApplyPriceAtStartDate() throws Exception {
-        verifyPrice(
-                "2020-06-14T15:00:00",
-                2,
-                25.45,
-                "2020-06-14T15:00:00",
-                "2020-06-14T18:30:00"
-        );
-    }
-
-    /**
-     * Verifies that the end date of a price validity period
-     * is inclusive.
-     * At exactly 18:30, price list 2 must still apply.
-     */
-    @Test
-    void shouldApplyPriceAtEndDate() throws Exception {
-        verifyPrice(
-                "2020-06-14T18:30:00",
-                2,
-                25.45,
-                "2020-06-14T15:00:00",
-                "2020-06-14T18:30:00"
-        );
-    }
-
-    /**
-     * Verifies that a product identifier equal to zero
-     * is rejected with HTTP 400 Bad Request.
-     */
-    @Test
-    void shouldReturn400WhenProductIdIsZero() throws Exception {
-
-        mockMvc.perform(get("/api/v1/prices")
-                        .param("applicationDate", "2020-06-14T10:00:00")
-                        .param("productId", "0")
-                        .param("brandId", "1")
-                        .accept(MediaType.APPLICATION_JSON))
-                .andDo(print())
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error")
                         .value("INVALID_PARAMETERS"));
     }
 
     /**
-     * Verifies that a brand identifier equal to zero
-     * is rejected with HTTP 400 Bad Request.
+     * Verifies that product identifiers equal to zero
+     * are rejected with HTTP 400 Bad Request.
      */
     @Test
-    void shouldReturn400WhenBrandIdIsZero() throws Exception {
+    void shouldReturn400WhenProductIdIsZero()
+            throws Exception {
 
-        mockMvc.perform(get("/api/v1/prices")
-                        .param("applicationDate", "2020-06-14T10:00:00")
-                        .param("productId", "35455")
+        mockMvc.perform(get(ENDPOINT)
+                        .param("applicationDate",
+                                "2020-06-14T10:00:00")
+                        .param("productId", "0")
+                        .param("brandId", BRAND_ID)
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error")
+                        .value("INVALID_PARAMETERS"));
+    }
+
+    /**
+     * Verifies that brand identifiers equal to zero
+     * are rejected with HTTP 400 Bad Request.
+     */
+    @Test
+    void shouldReturn400WhenBrandIdIsZero()
+            throws Exception {
+
+        mockMvc.perform(get(ENDPOINT)
+                        .param("applicationDate",
+                                "2020-06-14T10:00:00")
+                        .param("productId", PRODUCT_ID)
                         .param("brandId", "0")
                         .accept(MediaType.APPLICATION_JSON))
-                .andDo(print())
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error")
                         .value("INVALID_PARAMETERS"));
@@ -300,11 +272,84 @@ class PriceControllerIntegrationTest {
     void shouldReturn400WhenApplicationDateIsMissing()
             throws Exception {
 
-        mockMvc.perform(get("/api/v1/prices")
-                        .param("productId", "35455")
-                        .param("brandId", "1")
+        mockMvc.perform(get(ENDPOINT)
+                        .param("productId", PRODUCT_ID)
+                        .param("brandId", BRAND_ID)
                         .accept(MediaType.APPLICATION_JSON))
-                .andDo(print())
                 .andExpect(status().isBadRequest());
+    }
+
+    /**
+     * Verifies that an existing product returns HTTP 404
+     * when no price is valid for the requested date.
+     */
+    @Test
+    void shouldReturn404WhenNoPriceIsApplicable()
+            throws Exception {
+
+        mockMvc.perform(get(ENDPOINT)
+                        .param("applicationDate",
+                                "2021-01-01T10:00:00")
+                        .param("productId", PRODUCT_ID)
+                        .param("brandId", BRAND_ID)
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error")
+                        .value("PRICE_NOT_FOUND"));
+    }
+
+    /**
+     * Verifies that prices belonging to another brand
+     * are not returned for the requested brand.
+     */
+    @Test
+    void shouldReturn404WhenBrandDoesNotExist()
+            throws Exception {
+
+        mockMvc.perform(get(ENDPOINT)
+                        .param("applicationDate",
+                                "2020-06-14T16:00:00")
+                        .param("productId", PRODUCT_ID)
+                        .param("brandId", "2")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error")
+                        .value("PRICE_NOT_FOUND"));
+    }
+
+    // ---------------------------------------------------------
+    // PRICE VALIDITY BOUNDARY TESTS
+    // ---------------------------------------------------------
+
+    /**
+     * Verifies that the start date of a price validity
+     * period is inclusive.
+     * At exactly 15:00, price list 2 must already apply.
+     */
+    @Test
+    void shouldApplyPriceAtStartDate() throws Exception {
+        verifyPrice(
+                "2020-06-14T15:00:00",
+                2,
+                new BigDecimal("25.45"),
+                "2020-06-14T15:00:00",
+                "2020-06-14T18:30:00"
+        );
+    }
+
+    /**
+     * Verifies that the end date of a price validity
+     * period is inclusive.
+     * At exactly 18:30, price list 2 must still apply.
+     */
+    @Test
+    void shouldApplyPriceAtEndDate() throws Exception {
+        verifyPrice(
+                "2020-06-14T18:30:00",
+                2,
+                new BigDecimal("25.45"),
+                "2020-06-14T15:00:00",
+                "2020-06-14T18:30:00"
+        );
     }
 }
